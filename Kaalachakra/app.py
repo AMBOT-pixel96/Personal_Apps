@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 from datetime import datetime
 import pytz
 from streamlit_autorefresh import st_autorefresh
-import swisseph as swe  # Swiss Ephemeris - core of manual Panchang engine
+import swisseph as swe
 
 # ------------------- CONFIG -------------------
 st.set_page_config(page_title="🕉️ Kaalchakra Live (Manual Mode)", page_icon="🕉️", layout="centered")
@@ -68,14 +68,14 @@ st.markdown(f"### 🕒 {now.strftime('%A, %d %B %Y | %I:%M %p')}")
 
 # ------------------- PANCHANG CALCULATION -------------------
 try:
-    # Step 1: Get Julian Day
+    # Step 1: Julian Day
     jd = swe.julday(now.year, now.month, now.day, now.hour + now.minute / 60.0)
 
-    # Step 2: Calculate Sun and Moon longitudes
+    # Step 2: Get Sun and Moon longitude (extract only first element)
     sun_long = swe.calc_ut(jd, swe.SUN)[0]
     moon_long = swe.calc_ut(jd, swe.MOON)[0]
 
-    # Step 3: Calculate Tithi
+    # Step 3: Tithi
     tithi_num = int(((moon_long - sun_long) % 360) / 12) + 1
     paksha = "Shukla" if tithi_num <= 15 else "Krishna"
 
@@ -99,7 +99,7 @@ try:
     karanas = ["Bava", "Balava", "Kaulava", "Taitila", "Garaja", "Vanija", "Vishti"] * 9
     karana = karanas[karana_index]
 
-    # Step 7: Vaar (Day)
+    # Step 7: Vaar (weekday)
     vaar = now.strftime("%A")
 
     # ------------------- DISPLAY -------------------
