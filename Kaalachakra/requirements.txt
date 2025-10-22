@@ -2,3 +2,5 @@ streamlit
 pytz
 streamlit-autorefresh
 pyswisseph
+geocoder
+timezonefinder
