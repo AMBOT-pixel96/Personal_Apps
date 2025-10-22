@@ -9,7 +9,7 @@ import geocoder
 from timezonefinder import TimezoneFinder
 
 # ------------------- CONFIG -------------------
-st.set_page_config(page_title="🕉️ Kaalachakra Live (Auto Mode)", page_icon="🕉️", layout="centered")
+st.set_page_config(page_title="🕉️ Kaalachakra Live (GPS Recalibration Mode)", page_icon="🕉️", layout="centered")
 
 # -------------- STYLE ------------------
 st.markdown("""
@@ -30,34 +30,90 @@ hr { border:1px solid #f4d03f; box-shadow:0 0 5px #f4d03f; }
 # ------------------- TITLE -------------------
 st.markdown("""
 <h1>🕉️ Kaalachakra Live</h1>
-<h3>Auto-Detect Panchang • Sunrise-Based • Lahiri Sidereal • Offline</h3>
+<h3>GPS Synced • Lahiri Sidereal • Sunrise Panchang</h3>
 """, unsafe_allow_html=True)
 
-# ------------------- LOCATION AUTO-DETECT -------------------
+# ------------------- GPS / LOCATION SECTION -------------------
 st.sidebar.header("📍 Location Settings")
 
-# Auto-detect location via IP
-auto = st.sidebar.checkbox("Auto-detect my location 🌍", value=True)
+# JS for GPS Recalibration
+gps_script = """
+<script>
+function fetchGPS() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const lat = pos.coords.latitude.toFixed(6);
+                const lon = pos.coords.longitude.toFixed(6);
+                const coords = lat + "," + lon;
+                window.parent.postMessage({type:'gps_update', value:coords}, '*');
+            },
+            (err) => {
+                window.parent.postMessage({type:'gps_error', value:err.message}, '*');
+            }
+        );
+    } else {
+        window.parent.postMessage({type:'gps_error', value:'Geolocation not supported'}, '*');
+    }
+}
+</script>
+<button onclick="fetchGPS()" style="
+    background-color:#f4d03f;
+    color:#000;
+    font-weight:bold;
+    border:none;
+    border-radius:8px;
+    padding:10px 18px;
+    cursor:pointer;
+    box-shadow:0 0 10px #f4d03f66;
+    margin:10px auto;
+    display:block;
+">🔄 Recalibrate GPS</button>
+"""
 
-if auto:
-    g = geocoder.ip("me")
-    if g.ok and g.latlng:
-        lat, lon = g.latlng
-        try:
-            tf = TimezoneFinder()
-            tz_name = tf.timezone_at(lat=lat, lng=lon)
-        except Exception:
-            tz_name = "Asia/Kolkata"
-        st.sidebar.success(f"📡 Detected: {g.city or 'Unknown City'} ({lat:.2f}, {lon:.2f})")
-    else:
-        st.sidebar.warning("⚠️ Couldn’t auto-detect. Using Delhi by default.")
-        lat, lon, tz_name = 28.6139, 77.2090, "Asia/Kolkata"
-else:
+components.html(gps_script, height=100)
+
+# Default values
+lat, lon = 28.6139, 77.2090
+tz_name = "Asia/Kolkata"
+coords = st.session_state.get("gps_coords", None)
+
+# Manual fallback input
+use_auto = st.sidebar.checkbox("Use auto-detect (IP/GPS)", value=True)
+if not use_auto:
     lat = st.sidebar.number_input("Latitude", value=28.6139, format="%.6f")
     lon = st.sidebar.number_input("Longitude", value=77.2090, format="%.6f")
-    tz_name = st.sidebar.text_input("Timezone (IANA, e.g. Asia/Kolkata)", value="Asia/Kolkata")
+    tz_name = st.sidebar.text_input("Timezone", value="Asia/Kolkata")
 
-# ------------------- LIVE CLOCK -------------------
+# Handle new GPS updates (JS → Streamlit bridge)
+coords_box = st.empty()
+coords_msg = components.html("""
+<script>
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'gps_update') {
+    const coords = event.data.value;
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('coords', coords);
+    window.location.search = searchParams.toString();
+  }
+});
+</script>
+""", height=0)
+
+# Check for new coords in query params
+params = st.experimental_get_query_params()
+if "coords" in params:
+    coords = params["coords"][0]
+    try:
+        lat, lon = map(float, coords.split(","))
+        tf = TimezoneFinder()
+        tz_name = tf.timezone_at(lat=lat, lng=lon) or "Asia/Kolkata"
+        st.session_state["gps_coords"] = coords
+        st.success(f"📡 GPS recalibrated to {lat:.4f}, {lon:.4f} ({tz_name})")
+    except:
+        st.warning("⚠️ GPS data invalid — using last known location.")
+
+# ------------------- CLOCK -------------------
 components.html(f"""
 <div style="text-align:center; margin-top:10px;">
   <h2 id="clock" style="color:#f4d03f;text-shadow:0 0 8px #f1c40f;font-family:'Courier New',monospace;font-size:1.5rem;"></h2>
@@ -81,9 +137,9 @@ st_autorefresh(interval=60000, key="kaalachakra_refresh")
 # ------------------- TIME -------------------
 tz = pytz.timezone(tz_name)
 now_local = datetime.now(tz)
-st.markdown(f"### 🕒 {now_local.strftime('%A, %d %B %Y | %I:%M %p')} — <span class='small'>{tz_name}</span>", unsafe_allow_html=True)
+st.markdown(f"### 🕒 {now_local.strftime('%A, %d %B %Y | %I:%M %p')} — {tz_name}")
 
-# ---------- CONSTANTS ----------
+# ------------------- CONSTANTS -------------------
 NAKSHATRAS = [
     "Ashwini","Bharani","Krittika","Rohini","Mrigashira","Ardra","Punarvasu","Pushya",
     "Ashlesha","Magha","Purva Phalguni","Uttara Phalguni","Hasta","Chitra","Swati",
@@ -103,12 +159,11 @@ TITHIS = [
     "Krishna Shashthi","Krishna Saptami","Krishna Ashtami","Krishna Navami","Krishna Dashami",
     "Krishna Ekadashi","Krishna Dwadashi","Krishna Trayodashi","Krishna Chaturdashi","Amavasya"
 ]
-KARANAS_MOVABLE = ["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"]
+KARANAS = ["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"]
 
-# ---------- HELPER FUNCTIONS ----------
+# ------------------- CALC HELPERS -------------------
 def jd_to_local_dt(jd_ut):
-    if not jd_ut or (isinstance(jd_ut, float) and math.isnan(jd_ut)):
-        return None
+    if not jd_ut: return None
     y, m, d, ut = swe.revjul(jd_ut, swe.GREG_CAL)
     dt_utc = datetime(y, m, d, tzinfo=timezone.utc) + timedelta(hours=ut)
     return dt_utc.astimezone(tz)
@@ -126,13 +181,13 @@ def rise_set_one(jd0, body, rsmi, lon, lat):
     return None
 
 def sun_moon_rise_set(local_date, lon, lat):
-    midnight_local = local_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    midnight_local = local_date.replace(hour=0, minute=0)
     midnight_utc = midnight_local.astimezone(pytz.utc)
     jd0 = swe.julday(midnight_utc.year, midnight_utc.month, midnight_utc.day, 0.0)
-    sr = rise_set_one(jd0, swe.SUN,  swe.CALC_RISE, lon, lat) or rise_set_one(jd0+1, swe.SUN,  swe.CALC_RISE, lon, lat)
-    ss = rise_set_one(jd0, swe.SUN,  swe.CALC_SET,  lon, lat) or rise_set_one(jd0+1, swe.SUN,  swe.CALC_SET,  lon, lat)
-    mr = rise_set_one(jd0, swe.MOON, swe.CALC_RISE, lon, lat) or rise_set_one(jd0+1, swe.MOON, swe.CALC_RISE, lon, lat)
-    ms = rise_set_one(jd0, swe.MOON, swe.CALC_SET,  lon, lat) or rise_set_one(jd0+1, swe.MOON, swe.CALC_SET,  lon, lat)
+    sr = rise_set_one(jd0, swe.SUN,  swe.CALC_RISE, lon, lat)
+    ss = rise_set_one(jd0, swe.SUN,  swe.CALC_SET,  lon, lat)
+    mr = rise_set_one(jd0, swe.MOON, swe.CALC_RISE, lon, lat)
+    ms = rise_set_one(jd0, swe.MOON, swe.CALC_SET,  lon, lat)
     return jd_to_local_dt(sr), jd_to_local_dt(ss), jd_to_local_dt(mr), jd_to_local_dt(ms), sr
 
 def sidereal_longitudes(jd_ut, lon, lat):
@@ -145,51 +200,36 @@ def sidereal_longitudes(jd_ut, lon, lat):
 
 def panchang(local_date, lon, lat):
     sunrise, _, _, _, sr_jd = sun_moon_rise_set(local_date, lon, lat)
-    if sr_jd is None:
-        lf = local_date.replace(hour=6, minute=0).astimezone(pytz.utc)
-        sr_jd = swe.julday(lf.year, lf.month, lf.day, lf.hour)
     sun, moon = sidereal_longitudes(sr_jd, lon, lat)
     elong = (moon - sun) % 360
     t_idx = int(elong // 12)
-    t_name = TITHIS[t_idx]
-    paksha = "Shukla" if t_idx < 15 else "Krishna"
     nak = NAKSHATRAS[int((moon % 360) // (360/27))]
     yoga = YOGAS[int(((sun + moon) % 360) // (360/27))]
-    karana = (KARANAS_MOVABLE * 9)[int((elong // 6) % 60)]
-    return {"tithi": t_name, "paksha": paksha, "nakshatra": nak, "yoga": yoga, "karana": karana, "sunrise": sunrise}
-
-def rahukaal(sr, ss, weekday):
-    if not sr or not ss: return None, None
-    part = (ss - sr).total_seconds() / 8
-    idx_map = {6:8, 0:2, 1:7, 2:5, 3:6, 4:4, 5:3}
-    seg = idx_map[weekday] - 1
-    start = sr + timedelta(seconds=part * seg)
-    return start, start + timedelta(seconds=part)
+    karana = (KARANAS * 9)[int((elong // 6) % 60)]
+    return {"tithi": TITHIS[t_idx], "paksha": "Shukla" if t_idx < 15 else "Krishna",
+            "nakshatra": nak, "yoga": yoga, "karana": karana, "sunrise": sunrise}
 
 # ------------------- MAIN -------------------
 try:
     sunrise, sunset, moonrise, moonset, _ = sun_moon_rise_set(now_local, lon, lat)
     p = panchang(now_local, lon, lat)
-    rk_start, rk_end = rahukaal(sunrise, sunset, now_local.weekday())
-
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown(f"## 📍 Location Synced — {lat:.4f}, {lon:.4f}")
     st.markdown('<div class="row">', unsafe_allow_html=True)
+
     st.markdown('<div class="col"><div class="card">', unsafe_allow_html=True)
     st.markdown("### 🌅 Rise / Set")
-    st.markdown(f"**Sunrise:** {fmt_time(sunrise)} &nbsp; **Sunset:** {fmt_time(sunset)}")
-    st.markdown(f"**Moonrise:** {fmt_time(moonrise)} &nbsp; **Moonset:** {fmt_time(moonset)}")
-    if rk_start: st.markdown(f"<div class='small'>☄️ <b>Rahu Kaal:</b> {fmt_time(rk_start)}–{fmt_time(rk_end)}</div>", unsafe_allow_html=True)
+    st.markdown(f"**Sunrise:** {fmt_time(sunrise)} | **Sunset:** {fmt_time(sunset)}")
+    st.markdown(f"**Moonrise:** {fmt_time(moonrise)} | **Moonset:** {fmt_time(moonset)}")
     st.markdown('</div></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="col"><div class="card">', unsafe_allow_html=True)
     st.markdown("### 🔮 Panchang (Sunrise-based)")
-    st.markdown(f"🌸 **Tithi:** {p['tithi']}")
-    st.markdown(f"🌗 **Paksha:** {p['paksha']}")
-    st.markdown(f"✨ **Nakshatra:** {p['nakshatra']}")
-    st.markdown(f"🪶 **Yoga:** {p['yoga']}")
-    st.markdown(f"🌼 **Karana:** {p['karana']}")
+    for key, val in p.items():
+        if key != "sunrise":
+            st.markdown(f"**{key.title()}:** {val}")
     st.markdown('</div></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("<hr>", unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"🚫 Error: {e}")
@@ -197,6 +237,6 @@ except Exception as e:
 # ------------------- FOOTER -------------------
 st.markdown("""
 <div class="footer">
-🕯️ <span>ॐ नमः शिवाय</span> — Auto-synced with your cosmos 🌍⚡
+🕯️ <span>ॐ नमः शिवाय</span> — GPS Recalibration Mode 🔄 Synced with your Sky 🌍✨
 </div>
 """, unsafe_allow_html=True)
