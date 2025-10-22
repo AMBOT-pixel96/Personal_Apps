@@ -228,10 +228,9 @@ def devanagari_digits(s):
     return str(s).translate(dmap)
 
 def weekday_sanskrit(dt):
-    return VARS_SANSKRIT[dt.weekday()]  # Mon=0 → सोमवासरे etc.
+    return VARS_SANSKRIT[dt.weekday()]  # Mon=0
 
 def english_to_sanskrit_names(p):
-    # map current English Panchang names to Devanagari variants
     t_san = TITHIS_SAN[P["ti_idx"]]
     n_san = NAK_SAN[P["nak_idx"]]
     y_san = YOGA_SAN[P["yoga_idx"]]
@@ -244,7 +243,6 @@ def build_sankalpa(p, name, gotra, place, purpose, offering, when_dt):
     vara = weekday_sanskrit(when_dt)
     date_str = devanagari_digits(when_dt.strftime("%d-%m-%Y"))
     time_str = devanagari_digits(when_dt.strftime("%I:%M %p"))
-    # Traditional compact Sankalpa (safe & widely accepted)
     lines = [
         "ॐ विष्णुर्विष्णुर्विष्णुः ॥",
         "श्रीभगवतो महापुरुषस्य विष्णोराज्ञया प्रवर्तमाने कर्मणि।",
@@ -258,10 +256,9 @@ def build_sankalpa(p, name, gotra, place, purpose, offering, when_dt):
     return "\n".join(lines)
 
 def sankalpa_html(sank_text, p, name):
-    # Simple printable HTML (works everywhere; browser → Print → Save as PDF)
     style = """
     <style>
-    body{font-family: 'Noto Sans Devanagari', 'Hind', 'Mukta', 'Noto Sans', system-ui; padding:24px; background:#111; color:#f5f3e7;}
+    body{font-family:'Noto Sans Devanagari','Hind','Mukta','Noto Sans',system-ui; padding:24px; background:#111; color:#f5f3e7;}
     h1{color:#f4d03f; text-align:center;}
     .box{border:1px solid #f1c40f55; border-radius:12px; padding:18px; background:#151515;}
     pre{white-space:pre-wrap; font-size:18px; line-height:1.7;}
@@ -272,6 +269,38 @@ def sankalpa_html(sank_text, p, name):
     body = f"<h1>🪔 संकल्पपत्रम्</h1><div class='box'><pre>{sank_text}</pre><div class='meta'>{meta}</div></div>"
     return ("<html><head><meta charset='UTF-8'>" + style + "</head><body>" + body + "</body></html>").encode("utf-8")
 
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align:center'>🪔 Generate Sankalpa</h3>", unsafe_allow_html=True)
+
+with st.expander("Open Sankalpa Form"):
+    col1, col2 = st.columns(2)
+    with col1:
+        name = st.text_input("Name (e.g., Amlan Mishra)", value="")
+        gotra = st.text_input("Gotra (e.g., भारद्वाज)", value="")
+        place = st.text_input("Place/City (Devanagari or English)", value="नॊएडा / Noida")
+    with col2:
+        purpose = st.text_area("Why are you taking the Sankalpa? (Devanagari or English)",
+                               height=80, value="समस्त दुःख–कष्ट–विघ्न–नाशनार्थे")
+        offering = st.text_area("What will you offer / do? (Devanagari or English)",
+                                height=80, value="११ पाठाः, नैवेद्यम् च समर्पयामि")
+
+    # ✅ Streamlit Cloud compatible (no st.datetime_input)
+    date_sel = st.date_input("Sankalpa Date", value=now_local.date())
+    time_sel = st.time_input("Sankalpa Time", value=now_local.time().replace(microsecond=0))
+    when_dt = tz.localize(datetime.combine(date_sel, time_sel))
+
+    gen = st.button("✨ Generate", use_container_width=True)
+
+if gen and P:
+    text = build_sankalpa(P, name.strip() or "—", gotra.strip() or "—",
+                          place.strip() or "—", purpose.strip() or "—",
+                          offering.strip() or "—", when_dt)
+    st.success("✅ Sankalpa generated below. Review and download.")
+    st.markdown(f"<div class='out'>{text}</div>", unsafe_allow_html=True)
+
+    html_bytes = sankalpa_html(text, P, name or "sankalpa")
+    st.download_button("⬇️ Download Sankalpa (HTML → Print to PDF)",
+                       data=html_bytes, file_name="sankalpa.html", mime="text/html")
 # UI — Button + Form
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown("<h3 style='text-align:center'>🪔 Generate Sankalpa</h3>", unsafe_allow_html=True)
