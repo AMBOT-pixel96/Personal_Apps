@@ -7,9 +7,9 @@ import streamlit.components.v1 as components
 import swisseph as swe
 
 # =================== CONFIG ===================
-st.set_page_config(page_title="🕉️ Kaalachakra Live — v7.0", page_icon="🕉️", layout="centered")
+st.set_page_config(page_title="🕉️ Kaalachakra Live — v8.0 (Drik Emulation)", page_icon="🕉️", layout="centered")
 
-# ============== UI STYLE ==============
+# =================== UI STYLE ===================
 st.markdown("""
 <style>
 body { background:#0d0d0d; color:#f5f3e7; font-family:system-ui, -apple-system, Segoe UI, Roboto, 'Open Sans', sans-serif; }
@@ -26,10 +26,10 @@ code { background:#000; padding:2px 6px; border-radius:6px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ============== TITLE ==============
+# =================== TITLE ===================
 st.markdown("<h1>🕉️ Kaalachakra Live</h1><h3>Drik-style • Sunrise-based • Lahiri Sidereal • Topocentric</h3>", unsafe_allow_html=True)
 
-# ============== CONSTANT TABLES ==============
+# =================== CONSTANT TABLES ===================
 TITHIS = [
     "Shukla Pratipada","Shukla Dwitiya","Shukla Tritiya","Shukla Chaturthi","Shukla Panchami",
     "Shukla Shashthi","Shukla Saptami","Shukla Ashtami","Shukla Navami","Shukla Dashami",
@@ -49,16 +49,25 @@ YOGAS = [
     "Shoola","Ganda","Vriddhi","Dhruva","Vyaghata","Harshana","Vajra","Siddhi","Vyatipata",
     "Variyana","Parigha","Shiva","Siddha","Sadhya","Shubha","Shukla","Brahma","Indra","Vaidhriti"
 ]
-KARANAS_MOVABLE = ["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"]  # repeating sequence
 
-# ============== SIDEBAR INPUTS ==============
+# Karanas – full 60-half sequence (0..59) per classical rule:
+# 0: Kinstughna, 1..56: 7 movables repeat, 57: Shakuni, 58: Chatushpada, 59: Naga
+KARANA_60 = (
+    ["Kinstughna"] +
+    (["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"] * 8) +  # 1..56 (56 halves)
+    ["Shakuni","Chatushpada","Naga"]
+)
+
+# =================== SIDEBAR ===================
 st.sidebar.header("🌍 Location & Settings")
 lat = st.sidebar.number_input("Latitude", value=28.6139, format="%.6f")
 lon = st.sidebar.number_input("Longitude", value=77.2090, format="%.6f")
 tz_name = st.sidebar.text_input("Timezone (IANA, e.g. Asia/Kolkata)", value="Asia/Kolkata")
 show_debug = st.sidebar.checkbox("Show debug panel", value=False)
+# Tiny ayanamsa trim (degrees) if you need to match another source by a hair
+ayanamsa_trim = st.sidebar.slider("Ayanamsa fine trim (°)", -0.05, 0.05, 0.0, 0.001)
 
-# ============== LIVE CLOCK ==============
+# =================== LIVE CLOCK ===================
 components.html(f"""
 <div style="text-align:center; margin-top:10px;">
   <h2 id="clock" style="color:#f4d03f;text-shadow:0 0 8px #f1c40f;font-family:'Courier New',monospace;font-size:1.5rem;"></h2>
@@ -81,23 +90,21 @@ tz = pytz.timezone(tz_name)
 now_local = datetime.now(tz)
 st.markdown(f"### 🕒 {now_local.strftime('%A, %d %B %Y | %I:%M %p')} — <span class='small'>{tz_name}</span>", unsafe_allow_html=True)
 
-# ============== CORE ASTRONOMY HELPERS ==============
-def jd_to_local_dt(jd_ut: float) -> datetime | None:
-    if jd_ut is None or (isinstance(jd_ut, float) and math.isnan(jd_ut)):
-        return None
-    y, m, d, ut = swe.revjul(jd_ut, swe.GREG_CAL)  # UT hours
-    dt_utc = datetime(y, m, d, tzinfo=timezone.utc) + timedelta(hours=ut)
+# =================== ASTRO HELPERS ===================
+STEP_NAK = 360.0/27.0
+
+def jd_to_local_dt(jd_ut: float):
+    if jd_ut is None or (isinstance(jd_ut, float) and math.isnan(jd_ut)): return None
+    y,m,d,ut = swe.revjul(jd_ut, swe.GREG_CAL)
+    dt_utc = datetime(y,m,d, tzinfo=timezone.utc) + timedelta(hours=ut)
     return dt_utc.astimezone(tz)
 
-def fmt_time(dt: datetime | None) -> str:
-    return dt.strftime("%I:%M %p") if dt else "—"
+def fmt_time(dt): return dt.strftime("%I:%M %p") if dt else "—"
 
-def rise_set_one(jd0_ut: float, body: int, mode: int, lon: float, lat: float) -> float | None:
-    """Version-proof sunrise/sunset/moonrise/moonset."""
+def rise_set_one(jd0_ut, body, mode, lon, lat):
     try:
         ret, jdlist = swe.rise_trans(
-            jd0_ut, body, mode | swe.BIT_DISC_CENTER,
-            (lon, lat, 0.0), 1013.25, 15.0
+            jd0_ut, body, mode | swe.BIT_DISC_CENTER, (lon, lat, 0.0), 1013.25, 15.0
         )
         if ret >= 0:
             return jdlist[0] if isinstance(jdlist, (list, tuple)) else jdlist
@@ -105,136 +112,128 @@ def rise_set_one(jd0_ut: float, body: int, mode: int, lon: float, lat: float) ->
         pass
     return None
 
-def sun_moon_rise_set(local_date: datetime, lon: float, lat: float):
-    """Sunrise/sunset/moonrise/moonset for the local date (with day+1 fallback)."""
+def sun_moon_rise_set(local_date, lon, lat):
     swe.set_topo(lon, lat, 0.0)
-    midnight_local = local_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    midnight_utc = midnight_local.astimezone(pytz.utc)
-    jd0 = swe.julday(midnight_utc.year, midnight_utc.month, midnight_utc.day, 0.0)
-
+    local_midnight = local_date.replace(hour=0,minute=0,second=0,microsecond=0)
+    utc_midnight = local_midnight.astimezone(pytz.utc)
+    jd0 = swe.julday(utc_midnight.year, utc_midnight.month, utc_midnight.day, 0.0)
     sr = rise_set_one(jd0, swe.SUN,  swe.CALC_RISE, lon, lat)  or rise_set_one(jd0+1, swe.SUN,  swe.CALC_RISE, lon, lat)
-    ss = rise_set_one(jd0, swe.SUN,  swe.CALC_SET,  lon, lat)  or rise_set_one(jd0+1, swe.SUN,  swe.CALC_SET,  lon, lat)
+    ss = rise_set_one(jd0, swe.SUN,  swe.CALC_SET,  lon, lat)  or rise_set_one(jd0+1, swe.SUN,  swe.CALC_SET, lon, lat)
     mr = rise_set_one(jd0, swe.MOON, swe.CALC_RISE, lon, lat) or rise_set_one(jd0+1, swe.MOON, swe.CALC_RISE, lon, lat)
     ms = rise_set_one(jd0, swe.MOON, swe.CALC_SET,  lon, lat) or rise_set_one(jd0+1, swe.MOON, swe.CALC_SET,  lon, lat)
-
     return jd_to_local_dt(sr), jd_to_local_dt(ss), jd_to_local_dt(mr), jd_to_local_dt(ms), sr
 
-def sidereal_longitudes(jd_ut: float, lon: float, lat: float):
-    """Lahiri sidereal, topocentric Sun & Moon longitudes at jd_ut (0..360)."""
-    swe.set_sid_mode(swe.SIDM_LAHIRI)
+def sidereal_longitudes(jd_ut, lon, lat, trim_deg=0.0):
+    # Lahiri sidereal; apply tiny user-trim if needed for parity
+    swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
     swe.set_topo(lon, lat, 0.0)
-    FLG_TOPOCTR = getattr(swe, "FLG_TOPOCTR", 0)  # available in some builds
+    FLG_TOPOCTR = getattr(swe, "FLG_TOPOCTR", 0)
     flags = swe.FLG_SWIEPH | swe.FLG_SIDEREAL | FLG_TOPOCTR
-    sun_pos, _ = swe.calc_ut(jd_ut, swe.SUN, flags)
-    moon_pos, _ = swe.calc_ut(jd_ut, swe.MOON, flags)
-    return sun_pos[0] % 360.0, moon_pos[0] % 360.0
+    sun, _  = swe.calc_ut(jd_ut, swe.SUN,  flags)
+    moon, _ = swe.calc_ut(jd_ut, swe.MOON, flags)
+    sun_lon  = (sun[0]  + trim_deg) % 360.0
+    moon_lon = (moon[0] + trim_deg) % 360.0
+    return sun_lon, moon_lon
 
-# ============== PANCHANG INDICES ==============
-STEP_NAK = 360.0 / 27.0
+def tithi_idx(sun_lon, moon_lon):  return int(((moon_lon - sun_lon) % 360.0) // 12.0)
+def nak_idx(moon_lon):             return int((moon_lon % 360.0) // STEP_NAK)
+def yoga_idx(sun_lon, moon_lon):   return int(((sun_lon + moon_lon) % 360.0) // STEP_NAK)
+def karana_name(sun_lon, moon_lon):
+    half = int(((moon_lon - sun_lon) % 360.0) // 6.0)  # 0..59
+    return KARANA_60[half]
 
-def tithi_index(sun_long: float, moon_long: float) -> int:
-    return int(((moon_long - sun_long) % 360.0) // 12.0)  # 0..29
-
-def nak_index(moon_long: float) -> int:
-    return int((moon_long % 360.0) // STEP_NAK)  # 0..26
-
-def yoga_index(sun_long: float, moon_long: float) -> int:
-    return int(((sun_long + moon_long) % 360.0) // STEP_NAK)  # 0..26
-
-def karana_name(sun_long: float, moon_long: float) -> str:
-    elong = (moon_long - sun_long) % 360.0
-    idx = int((elong // 6.0) % 60)
-    return (KARANAS_MOVABLE * 9)[idx]  # simple movable cycle
-
-# ============== TRANSITION FINDER (for “ends at”) ==============
-def find_next_change(jd_start: float, lon: float, lat: float, kind: str, current_idx: int, max_hours: int = 48) -> float | None:
-    """
-    Find the next time (JD) when the given index (tithi/nak/yoga) changes.
-    Coarse scan hourly, then binary search to minute precision.
-    """
+# ---- Find next transition time for a given index ----
+def find_next_change(jd_start, lon, lat, kind, cur_idx, trim_deg=0.0, max_hours=48):
     def idx_at(jd):
-        s, m = sidereal_longitudes(jd, lon, lat)
-        if kind == "tithi":   return tithi_index(s, m)
-        if kind == "nak":     return nak_index(m)
-        if kind == "yoga":    return yoga_index(s, m)
+        s, m = sidereal_longitudes(jd, lon, lat, trim_deg)
+        if kind == "tithi": return tithi_idx(s, m)
+        if kind == "nak":   return nak_idx(m)
+        if kind == "yoga":  return yoga_idx(s, m)
         return None
 
-    # Coarse scan
-    step = 1.0 / 24.0  # 1 hour
+    step = 0.25/24.0  # 15-minute coarse
     jd_prev = jd_start
-    prev_idx = current_idx
-    for _ in range(max_hours):
+    prev_idx = cur_idx
+    for _ in range(int(max_hours/0.25)):
         jd_next = jd_prev + step
-        nxt_idx = idx_at(jd_next)
-        if nxt_idx is None:
-            return None
-        if nxt_idx != prev_idx:
-            # binary search in [jd_prev, jd_next]
+        nxt = idx_at(jd_next)
+        if nxt is None: return None
+        if nxt != prev_idx:
+            # binary search to ~1 min
             lo, hi = jd_prev, jd_next
-            for _ in range(24):  # ~2.5 sec granularity
-                mid = (lo + hi) / 2.0
+            for _ in range(30):
+                mid = (lo + hi)/2.0
                 im = idx_at(mid)
-                if im == prev_idx:
-                    lo = mid
-                else:
-                    hi = mid
+                if im == prev_idx: lo = mid
+                else: hi = mid
             return hi
-        jd_prev, prev_idx = jd_next, nxt_idx
+        jd_prev, prev_idx = jd_next, nxt
     return None
 
-# ============== MAIN PANCHANG ==============
-def compute_panchang_for_date(local_date: datetime, lon: float, lat: float):
-    # 1) Rise/Set (get sunrise JD)
+# =================== CORE ENGINE ===================
+def panchang_for_date(local_date, lon, lat, trim_deg=0.0):
     sr_local, ss_local, mr_local, ms_local, sr_jd = sun_moon_rise_set(local_date, lon, lat)
 
-    # 2) Evaluate AT sunrise + 1 minute (avoid boundary flicker)
-    eval_local = (sr_local or local_date.replace(hour=6, minute=0, second=0, microsecond=0)) + timedelta(minutes=1)
+    # Evaluate at "apparent" sunrise + 15 minutes to avoid boundary flutters
+    eval_local = (sr_local or local_date.replace(hour=6, minute=0)) + timedelta(minutes=15)
     eval_utc = eval_local.astimezone(pytz.utc)
     jd_eval = swe.julday(eval_utc.year, eval_utc.month, eval_utc.day,
                          eval_utc.hour + eval_utc.minute/60 + eval_utc.second/3600)
 
-    # 3) Sidereal longs (Lahiri, topocentric)
-    sun_long, moon_long = sidereal_longitudes(jd_eval, lon, lat)
-    elong = (moon_long - sun_long) % 360.0
+    # Also evaluate BEFORE sunrise (for "roll forward if ended before sunrise" checks)
+    pre_local = eval_local - timedelta(hours=2)
+    pre_utc = pre_local.astimezone(pytz.utc)
+    jd_pre = swe.julday(pre_utc.year, pre_utc.month, pre_utc.day,
+                        pre_utc.hour + pre_utc.minute/60 + pre_utc.second/3600)
 
-    # 4) Panchang pieces
-    ti = tithi_index(sun_long, moon_long)            # 0..29
-    ni = nak_index(moon_long)                        # 0..26
-    yi = yoga_index(sun_long, moon_long)             # 0..26
+    # Sidereal longitudes
+    s_eval, m_eval = sidereal_longitudes(jd_eval, lon, lat, trim_deg)
+    s_pre,  m_pre  = sidereal_longitudes(jd_pre,  lon, lat, trim_deg)
+
+    # Indices (evaluate at sunrise+15)
+    ti = tithi_idx(s_eval, m_eval)
+    ni = nak_idx(m_eval)
+    yi = yoga_idx(s_eval, m_eval)
+
+    # ---- Drik-like tithi rule: if tithi changed before sunrise, show current (post-sunrise) ----
+    ti_pre = tithi_idx(s_pre, m_pre)
+    if ti_pre != ti:
+        # already rolled forward because tithi flipped before sunrise
+        pass
+
+    # Names
     tithi_name = TITHIS[ti]
+    paksha = "Shukla" if ti < 15 else "Krishna"
     nak_name = NAKSHATRAS[ni]
     yoga_name = YOGAS[yi]
-    paksha = "Shukla" if ti < 15 else "Krishna"
-    karana = karana_name(sun_long, moon_long)
+    karana = karana_name(s_eval, m_eval)
 
-    # 5) Next change times
-    tithi_change_jd = find_next_change(jd_eval, lon, lat, "tithi", ti)
-    nak_change_jd   = find_next_change(jd_eval, lon, lat, "nak",   ni)
-    yoga_change_jd  = find_next_change(jd_eval, lon, lat, "yoga",  yi)
+    # Ends-at times
+    tithi_end_jd = find_next_change(jd_eval, lon, lat, "tithi", ti, trim_deg)
+    nak_end_jd   = find_next_change(jd_eval, lon, lat, "nak",   ni, trim_deg)
+    yoga_end_jd  = find_next_change(jd_eval, lon, lat, "yoga",  yi, trim_deg)
 
     return {
         "sunrise": sr_local, "sunset": ss_local, "moonrise": mr_local, "moonset": ms_local,
-        "sun_long": sun_long, "moon_long": moon_long, "elong": elong,
+        "sun_long": s_eval, "moon_long": m_eval, "elong": (m_eval - s_eval) % 360.0,
         "tithi": tithi_name, "paksha": paksha, "nakshatra": nak_name, "yoga": yoga_name, "karana": karana,
-        "tithi_ends": jd_to_local_dt(tithi_change_jd),
-        "nak_ends": jd_to_local_dt(nak_change_jd),
-        "yoga_ends": jd_to_local_dt(yoga_change_jd)
+        "tithi_ends": jd_to_local_dt(tithi_end_jd),
+        "nak_ends": jd_to_local_dt(nak_end_jd),
+        "yoga_ends": jd_to_local_dt(yoga_end_jd)
     }
 
-# ============== RUN & RENDER ==============
+# =================== RUN ===================
 try:
-    p = compute_panchang_for_date(now_local, lon, lat)
+    p = panchang_for_date(now_local, lon, lat, ayanamsa_trim)
 
     st.markdown('<div class="row">', unsafe_allow_html=True)
 
-    # Rise/Set
     st.markdown('<div class="col"><div class="card">', unsafe_allow_html=True)
     st.markdown("### 🌅 Rise / Set")
     st.markdown(f"**Sunrise:** {fmt_time(p['sunrise'])} &nbsp;&nbsp; **Sunset:** {fmt_time(p['sunset'])}")
     st.markdown(f"**Moonrise:** {fmt_time(p['moonrise'])} &nbsp;&nbsp; **Moonset:** {fmt_time(p['moonset'])}")
     st.markdown('</div></div>', unsafe_allow_html=True)
 
-    # Panchang
     st.markdown('<div class="col"><div class="card">', unsafe_allow_html=True)
     st.markdown("### 🔮 Panchang (Sunrise-based)")
     st.markdown(f"🌸 **Tithi:** {p['tithi']}  <span class='small'>(ends {fmt_time(p['tithi_ends'])})</span>", unsafe_allow_html=True)
@@ -244,25 +243,27 @@ try:
     st.markdown(f"🌼 **Karana:** {p['karana']}")
     st.markdown('</div></div>', unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)  # row end
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    # Generate Sankalpa button (placeholder – we wire the dialog next)
     st.markdown("<div style='text-align:center'><button class='kbutton'>🪔 Generate Sankalpa</button></div>", unsafe_allow_html=True)
 
-    # Debug panel
     if show_debug:
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🧪 Debug")
         st.caption(f"☀️ Sun λ = {p['sun_long']:.6f}°  |  🌙 Moon λ = {p['moon_long']:.6f}°  |  Δ = {p['elong']:.6f}°")
-        st.caption(f"tithi_idx = {TITHIS.index(p['tithi'])}  |  nak_idx = {NAKSHATRAS.index(p['nakshatra'])}  |  yoga_idx = {YOGAS.index(p['yoga'])}")
+        # raw indices
+        raw_ti = TITHIS.index(p['tithi'])
+        raw_ni = NAKSHATRAS.index(p['nakshatra'])
+        raw_yi = YOGAS.index(p['yoga'])
+        st.caption(f"indices → tithi={raw_ti}, nak={raw_ni}, yoga={raw_yi} | trim={ayanamsa_trim:+.3f}°")
 
 except Exception as e:
     st.error(f"🚫 Calculation Error: {e}")
 
-# ============== FOOTER ==============
+# =================== FOOTER ===================
 st.markdown("""
 <div class="footer">
-🕯️ <span>ॐ नमः शिवाय</span> — v7.0 Cosmic Accuracy Edition (Swiss Ephemeris • Lahiri • Topocentric)
+🕯️ <span>ॐ नमः शिवाय</span> — v8.0 Drik Emulation Mode (Swiss Ephemeris • Lahiri • Topocentric • Sunrise + 15m)
 </div>
 """, unsafe_allow_html=True)
