@@ -101,31 +101,33 @@ if not CLIENT_ID or not CLIENT_SECRET:
 else:
     # STEP 1: Get access token
     token_url = "https://api.prokerala.com/token"
-    token_data = {
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {
         "grant_type": "client_credentials",
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
     }
 
     try:
-        token_resp = requests.post(token_url, data=token_data, timeout=10)
+        token_resp = requests.post(token_url, data=data, headers=headers, timeout=10)
         token_resp.raise_for_status()
-        access_token = token_resp.json().get("access_token")
+        token_json = token_resp.json()
+        access_token = token_json.get("access_token")
 
         if not access_token:
-            st.error("🚫 Failed to get access token. Check your credentials.")
+            st.error(f"🚫 No access token returned. Response: {token_json}")
         else:
-            # STEP 2: Use token to call Panchang API
-            url = "https://api.prokerala.com/v2/astrology/panchang"
+            # STEP 2: Panchang API call
+            panchang_url = "https://api.prokerala.com/v2/astrology/panchang"
             params = {
                 "ayanamsa": 1,
                 "datetime": now.isoformat(),
                 "latitude": lat,
                 "longitude": lon
             }
-            headers = {"Authorization": f"Bearer {access_token}"}
+            auth_header = {"Authorization": f"Bearer {access_token}"}
 
-            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             p = data.get("data", {}).get("panchang", {})
