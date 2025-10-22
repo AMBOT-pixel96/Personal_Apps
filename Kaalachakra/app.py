@@ -121,7 +121,7 @@ else:
             panchang_url = "https://api.prokerala.com/v2/astrology/panchang"
             params = {
                 "ayanamsa": 1,
-                "datetime": now.isoformat(),
+                "datetime": now.strftime("%Y-%m-%dT%H:%M:%S%z"),  # ✅ fixed format
                 "latitude": lat,
                 "longitude": lon
             }
@@ -144,6 +144,7 @@ else:
 
     except requests.exceptions.RequestException as e:
         st.error(f"🚫 API Error: {e}")
+
 # ------------------- FOOTER -------------------
 st.markdown("""
 <div class="footer">
