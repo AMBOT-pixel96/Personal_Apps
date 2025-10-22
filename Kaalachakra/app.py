@@ -65,7 +65,7 @@ tz = pytz.timezone(tz_name)
 now_local = datetime.now(tz)
 st.markdown(f"### 🕒 {now_local.strftime('%A, %d %B %Y | %I:%M %p')}")
 
-# ---------- CONSTANTS & TABLES ----------
+# ---------- CONSTANTS ----------
 NAKSHATRAS = [
     "Ashwini","Bharani","Krittika","Rohini","Mrigashira","Ardra","Punarvasu","Pushya",
     "Ashlesha","Magha","Purva Phalguni","Uttara Phalguni","Hasta","Chitra","Swati",
@@ -85,13 +85,13 @@ TITHIS = [
     "Krishna Shashthi","Krishna Saptami","Krishna Ashtami","Krishna Navami","Krishna Dashami",
     "Krishna Ekadashi","Krishna Dwadashi","Krishna Trayodashi","Krishna Chaturdashi","Amavasya"
 ]
-KARANAS_MOVABLE = ["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"]  # repeating 7
+KARANAS_MOVABLE = ["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"]  # simple repeating set
 
 # ---------- HELPERS ----------
 def jd_to_local_dt(jd_ut: float) -> datetime | None:
-    if not jd_ut or math.isnan(jd_ut):
+    if not jd_ut or isinstance(jd_ut, float) and math.isnan(jd_ut):
         return None
-    y, m, d, ut = swe.revjul(jd_ut, swe.GREG_CAL)  # 'ut' in hours
+    y, m, d, ut = swe.revjul(jd_ut, swe.GREG_CAL)  # ut in hours
     dt_utc = datetime(y, m, d, tzinfo=timezone.utc) + timedelta(hours=ut)
     return dt_utc.astimezone(tz)
 
@@ -100,72 +100,70 @@ def fmt_time(dt: datetime | None) -> str:
 
 def rise_set_one(jd0_ut: float, body: int, rsmi: int, lon: float, lat: float) -> float | None:
     """
-    Swiss Ephemeris rise/set correct signature:
-    swe.rise_trans(jd_ut, body, rsmi, geopos=(lon,lat,alt), atpress, attemp)
-    Returns (ret, jd_list), we take jd_list[0] if ret>=0
+    Version-proof Swiss Ephemeris rise/set:
+    - Use BIT_DISC_CENTER
+    - Provide geopos=(lon,lat,alt), pressure, temperature
     """
     try:
-        ret, jdlist = swe.rise_trans(jd0_ut, body, rsmi | swe.BIT_DISC_CENTER,
-                                     (lon, lat, 0.0), 1013.25, 15.0)
+        ret, jdlist = swe.rise_trans(
+            jd0_ut, body, rsmi | swe.BIT_DISC_CENTER,
+            (lon, lat, 0.0), 1013.25, 15.0
+        )
         if ret >= 0:
-            # jdlist can be a float or a list/tuple
             return jdlist[0] if isinstance(jdlist, (list, tuple)) else jdlist
-        return None
     except Exception:
-        return None
+        pass
+    return None
 
 def sun_moon_rise_set(local_date: datetime, lon: float, lat: float):
-    # Start searching from UTC midnight of local date
+    # Start from UTC midnight of the same local date
     midnight_local = local_date.replace(hour=0, minute=0, second=0, microsecond=0)
     midnight_utc = midnight_local.astimezone(pytz.utc)
     jd0 = swe.julday(midnight_utc.year, midnight_utc.month, midnight_utc.day, 0.0)
 
-    sr = rise_set_one(jd0, swe.SUN,  swe.CALC_RISE, lon, lat) or rise_set_one(jd0+1, swe.SUN,  swe.CALC_RISE, lon, lat)
-    ss = rise_set_one(jd0, swe.SUN,  swe.CALC_SET,  lon, lat) or rise_set_one(jd0+1, swe.SUN,  swe.CALC_SET,  lon, lat)
-    mr = rise_set_one(jd0, swe.MOON, swe.CALC_RISE, lon, lat) or rise_set_one(jd0+1, swe.MOON, swe.CALC_RISE, lon, lat)
-    ms = rise_set_one(jd0, swe.MOON, swe.CALC_SET,  lon, lat) or rise_set_one(jd0+1, swe.MOON, swe.CALC_SET,  lon, lat)
+    sr = rise_set_one(jd0, swe.SUN,  swe.CALC_RISE, lon, lat) or rise_set_one(jd0 + 1, swe.SUN,  swe.CALC_RISE, lon, lat)
+    ss = rise_set_one(jd0, swe.SUN,  swe.CALC_SET,  lon, lat) or rise_set_one(jd0 + 1, swe.SUN,  swe.CALC_SET,  lon, lat)
+    mr = rise_set_one(jd0, swe.MOON, swe.CALC_RISE, lon, lat) or rise_set_one(jd0 + 1, swe.MOON, swe.CALC_RISE, lon, lat)
+    ms = rise_set_one(jd0, swe.MOON, swe.CALC_SET,  lon, lat) or rise_set_one(jd0 + 1, swe.MOON, swe.CALC_SET,  lon, lat)
 
     return (jd_to_local_dt(sr), jd_to_local_dt(ss), jd_to_local_dt(mr), jd_to_local_dt(ms), sr)
 
 def sidereal_longitudes(jd_ut: float, lon: float, lat: float):
-    """Lahiri sidereal, topocentric longitudes of Sun & Moon (0..360)."""
-    swe.set_sid_mode(swe.SIDM_LAHIRI)          # Lahiri ayanamsa (Drik standard)
-    swe.set_topo(lon, lat, 0.0)                # observer
-    flags = swe.FLG_SWIEPH | swe.FLG_SIDEREAL | swe.FLG_TOPO  # Swiss eph, sidereal, topo
+    """Lahiri sidereal longitudes at observer location."""
+    swe.set_sid_mode(swe.SIDM_LAHIRI)     # Lahiri (Drik standard)
+    swe.set_topo(lon, lat, 0.0)           # topocentric observer
+    flags = swe.FLG_SWIEPH | swe.FLG_SIDEREAL  # (topocentric applied via set_topo)
     sun_pos, _ = swe.calc_ut(jd_ut, swe.SUN, flags)
     moon_pos, _ = swe.calc_ut(jd_ut, swe.MOON, flags)
     return (sun_pos[0] % 360.0, moon_pos[0] % 360.0)
 
 def panchang_at_sunrise(local_date: datetime, lon: float, lat: float):
-    # Get sunrise JD; if not found, use 06:00 local fallback
     sunrise_local, _, _, _, sr_jd = sun_moon_rise_set(local_date, lon, lat)
     if sr_jd is None:
-        # fallback: 06:00 local time
-        local_fallback = local_date.replace(hour=6, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
-        sr_jd = swe.julday(local_fallback.year, local_fallback.month, local_fallback.day,
-                           local_fallback.hour + local_fallback.minute/60 + local_fallback.second/3600)
+        # fallback to 06:00 local
+        lf = local_date.replace(hour=6, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+        sr_jd = swe.julday(lf.year, lf.month, lf.day, lf.hour + lf.minute/60 + lf.second/3600)
 
-    # Sidereal longitudes at sunrise
     sun_long, moon_long = sidereal_longitudes(sr_jd, lon, lat)
 
-    # Tithi (each 12° elongation of Moon-Sun)
+    # Tithi
     elong = (moon_long - sun_long) % 360.0
-    tithi_idx = int(elong // 12.0)             # 0..29
+    tithi_idx = int(elong // 12.0)  # 0..29
     tithi_name = TITHIS[tithi_idx]
     paksha = "Shukla" if tithi_idx < 15 else "Krishna"
 
-    # Nakshatra (each 13°20' = 360/27)
+    # Nakshatra
     nak_size = 360.0 / 27.0
     nak_index = int((moon_long % 360.0) // nak_size)
     nakshatra = NAKSHATRAS[nak_index]
 
-    # Yoga (sum of longitudes, sidereal)
+    # Yoga (sidereal)
     yoga_index = int(((sun_long + moon_long) % 360.0) // nak_size)
     yoga = YOGAS[yoga_index]
 
-    # Karana (basic repeating series; precise fixed karanas not handled here)
+    # Karana (simple repeating set; fixed karanas not handled yet)
     karana_idx = int((elong // 6.0) % 60)
-    karana = (KARANAS_MOVABLE * 9)[karana_idx]  # 63 items; we use first 60
+    karana = (KARANAS_MOVABLE * 9)[karana_idx]
 
     return {
         "sunrise_local": sunrise_local,
@@ -181,7 +179,7 @@ def rahukaal(sr: datetime | None, ss: datetime | None, weekday: int):
         return None, None
     day_len = (ss - sr).total_seconds()
     part = day_len / 8.0
-    # Python weekday(): Mon=0..Sun=6
+    # Mon=0..Sun=6
     idx_map = {6:8, 0:2, 1:7, 2:5, 3:6, 4:4, 5:3}
     seg = idx_map[weekday] - 1
     start = sr + timedelta(seconds=part * seg)
