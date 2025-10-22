@@ -63,44 +63,63 @@ st.markdown("<hr style='margin-top:5px;margin-bottom:10px;'>", unsafe_allow_html
 st_autorefresh(interval=60000, key="kaalachakra_refresh")
 
 # ------------------- TIME -------------------
-now = datetime.now(pytz.timezone(tz))
-st.markdown(f"### 🕒 {now.strftime('%A, %d %B %Y | %I:%M %p')}")
+now_local = datetime.now(pytz.timezone(tz))
+st.markdown(f"### 🕒 {now_local.strftime('%A, %d %B %Y | %I:%M %p')}")
 
-# ------------------- PANCHANG CALCULATION -------------------
+# ------------------- PANCHANG CALCULATION (Manual) -------------------
 try:
-    # Step 1: Julian Day
-    jd = swe.julday(now.year, now.month, now.day, now.hour + now.minute / 60.0)
+    # Use UTC for Swiss Ephemeris
+    now_utc = now_local.astimezone(pytz.utc)
+    jd = swe.julday(now_utc.year, now_utc.month, now_utc.day,
+                    now_utc.hour + now_utc.minute/60.0 + now_utc.second/3600.0)
 
-    # Step 2: Get Sun and Moon longitude (extract only first element)
-    sun_long = swe.calc_ut(jd, swe.SUN)[0]
-    moon_long = swe.calc_ut(jd, swe.MOON)[0]
+    # Get ecliptic longitudes with MOSEPH (no external ephemeris files needed)
+    sun_pos, _ = swe.calc_ut(jd, swe.SUN, swe.FLG_MOSEPH)
+    moon_pos, _ = swe.calc_ut(jd, swe.MOON, swe.FLG_MOSEPH)
+    sun_long = sun_pos[0]    # <-- take ONLY longitude
+    moon_long = moon_pos[0]  # <-- take ONLY longitude
 
-    # Step 3: Tithi
-    tithi_num = int(((moon_long - sun_long) % 360) / 12) + 1
+    # Normalize to 0..360 just to be safe
+    sun_long %= 360.0
+    moon_long %= 360.0
+
+    # --- TITHI ---
+    # Each tithi is 12 degrees of Moon-Sun elongation.
+    elong = (moon_long - sun_long) % 360.0
+    tithi_num = int(elong // 12.0) + 1            # 1..30
     paksha = "Shukla" if tithi_num <= 15 else "Krishna"
 
-    # Step 4: Nakshatra
-    nakshatra_index = int((moon_long % 360) / (360 / 27))
-    nakshatras = ["Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu", "Pushya",
-                  "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra", "Swati",
-                  "Vishakha", "Anuradha", "Jyeshtha", "Mula", "Purva Ashadha", "Uttara Ashadha",
-                  "Shravana", "Dhanishtha", "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"]
+    # --- NAKSHATRA ---
+    # Each nakshatra is 13°20' = 13.333333... degrees
+    nak_size = 360.0 / 27.0
+    nakshatra_index = int((moon_long % 360.0) // nak_size)
+    nakshatras = [
+        "Ashwini","Bharani","Krittika","Rohini","Mrigashira","Ardra","Punarvasu","Pushya",
+        "Ashlesha","Magha","Purva Phalguni","Uttara Phalguni","Hasta","Chitra","Swati",
+        "Vishakha","Anuradha","Jyeshtha","Mula","Purva Ashadha","Uttara Ashadha",
+        "Shravana","Dhanishtha","Shatabhisha","Purva Bhadrapada","Uttara Bhadrapada","Revati"
+    ]
     nakshatra = nakshatras[nakshatra_index]
 
-    # Step 5: Yoga
-    yoga_index = int(((sun_long + moon_long) % 360) / (360 / 27))
-    yogas = ["Vishkambha", "Priti", "Ayushman", "Saubhagya", "Shobhana", "Atiganda", "Sukarma", "Dhriti",
-             "Shoola", "Ganda", "Vriddhi", "Dhruva", "Vyaghata", "Harshana", "Vajra", "Siddhi", "Vyatipata",
-             "Variyana", "Parigha", "Shiva", "Siddha", "Sadhya", "Shubha", "Shukla", "Brahma", "Indra", "Vaidhriti"]
+    # --- YOGA ---
+    # Sum of Sun+Moon longitudes divided into 27 equal parts
+    yoga_index = int(((sun_long + moon_long) % 360.0) // nak_size)
+    yogas = [
+        "Vishkambha","Priti","Ayushman","Saubhagya","Shobhana","Atiganda","Sukarma","Dhriti",
+        "Shoola","Ganda","Vriddhi","Dhruva","Vyaghata","Harshana","Vajra","Siddhi","Vyatipata",
+        "Variyana","Parigha","Shiva","Siddha","Sadhya","Shubha","Shukla","Brahma","Indra","Vaidhriti"
+    ]
     yoga = yogas[yoga_index]
 
-    # Step 6: Karana
-    karana_index = int((((moon_long - sun_long) % 360) / 6) % 60)
-    karanas = ["Bava", "Balava", "Kaulava", "Taitila", "Garaja", "Vanija", "Vishti"] * 9
-    karana = karanas[karana_index]
+    # --- KARANA ---
+    # Each karana is half a tithi → 6 degrees
+    karana_index = int((elong // 6.0) % 60)
+    # Standard repeating karana cycle (7 movable repeated; Kinstugna etc. ignored for simplicity)
+    karanas_cycle = ["Bava","Balava","Kaulava","Taitila","Garaja","Vanija","Vishti"] * 9  # 63 items; we use first 60
+    karana = karanas_cycle[karana_index]
 
-    # Step 7: Vaar (weekday)
-    vaar = now.strftime("%A")
+    # --- VAAR ---
+    vaar = now_local.strftime("%A")
 
     # ------------------- DISPLAY -------------------
     st.markdown("<hr>", unsafe_allow_html=True)
@@ -115,6 +134,8 @@ try:
 
 except Exception as e:
     st.error(f"🚫 Calculation Error: {e}")
+    # Uncomment for quick introspection:
+    # st.exception(e)
 
 # ------------------- FOOTER -------------------
 st.markdown("""
