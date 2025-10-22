@@ -123,20 +123,22 @@ else:
             formatted_dt = formatted_dt[:-2] + ":" + formatted_dt[-2:]
 
             params = {
-    "ayanamsa": 1,
-    "datetime": formatted_dt,
-    "coordinates": f"{lat},{lon}"
-}
+                "ayanamsa": 1,
+                "datetime": formatted_dt,
+                "coordinates": f"{lat},{lon}"
+            }
 
             auth_header = {"Authorization": f"Bearer {access_token}"}
             resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
             resp.raise_for_status()
             data = resp.json()
-            p = data.get("data", {}).get("panchang", {})
+
+            # 🔍 The Panchang data lives inside data → panchang → details
+            p = data.get("data", {}).get("panchang", {}).get("details", {})
 
             # ------------------- DISPLAY -------------------
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("## 🔮 **Panchang Details**")
+            st.markdown("## 🔮 <b>Panchang Details</b>", unsafe_allow_html=True)
             st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
             st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
             st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
