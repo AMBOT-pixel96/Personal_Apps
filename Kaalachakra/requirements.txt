@@ -1,4 +1,4 @@
 streamlit
-streamlit-autorefresh
-requests
 pytz
+streamlit-autorefresh
+pyswisseph
