@@ -100,6 +100,17 @@ krishna_data = {
     15: ("गौरी सानिध्य", "सुखप्रद")
 }
 
+# --- Shiva Vaas → Image mapping ---
+image_map = {
+    "शमशान": "images/smasan.jpg",
+    "गौरी सानिध्य": "images/gauri.jpg",
+    "सभायां": "images/sabha.jpg",  # your chosen temple / mandapam / hall image
+    "क्रीडायां": "images/kreeda.jpg",
+    "कैलाश पर": "images/kailash.jpg",
+    "वृषारूढ": "images/vrisharudh.jpg",
+    "भोजन": "images/bhojan.jpg"
+}
+
 # --- Fetch Results ---
 if paksha == "Shukla Paksha":
     vaas, phal = shukla_data[tithi]
@@ -110,6 +121,11 @@ else:
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown(f"<h2>🔱 शिववास: {vaas}</h2>", unsafe_allow_html=True)
 st.markdown(f"<h3>🌸 फल: {phal}</h3>", unsafe_allow_html=True)
+
+# --- Display corresponding image ---
+if vaas in image_map:
+    st.image(image_map[vaas], use_container_width=True, caption=f"🔮 {vaas} — Divine Presence")
+
 st.markdown("<hr>", unsafe_allow_html=True)
 
 # --- Footer ---
