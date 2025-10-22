@@ -54,7 +54,7 @@ lat = st.sidebar.number_input("Latitude", value=28.6139, format="%.6f")
 lon = st.sidebar.number_input("Longitude", value=77.2090, format="%.6f")
 tz = st.sidebar.text_input("Timezone (e.g. Asia/Kolkata)", value="Asia/Kolkata")
 
-# ------------------- LIVE CLOCK (JS, synced to timezone) -------------------
+# ------------------- LIVE CLOCK -------------------
 clock_html = f"""
 <div style="text-align:center; margin-top:10px;">
   <h2 id="clock" style="
@@ -64,7 +64,6 @@ clock_html = f"""
       font-size:1.5rem;">
   </h2>
 </div>
-
 <script>
 function updateClock() {{
   const tz = "{tz}";
@@ -85,42 +84,71 @@ components.html(clock_html, height=65)
 st.markdown("<hr style='margin-top:5px;margin-bottom:10px;'>", unsafe_allow_html=True)
 
 # ------------------- AUTO REFRESH -------------------
-# Refresh every 60 seconds (60000 ms)
 st_autorefresh(interval=60000, key="kaalachakra_refresh")
 
-# ------------------- TIME (for backend API call) -------------------
+# ------------------- TIME -------------------
 now = datetime.now(pytz.timezone(tz))
 st.markdown(f"### 🕒 {now.strftime('%A, %d %B %Y | %I:%M %p')}")
 
-# STEP 2: Panchang API call
-panchang_url = "https://api.prokerala.com/v2/astrology/panchang"
-formatted_dt = now.strftime("%Y-%m-%dT%H:%M:%S%z")
-# Add colon in timezone offset → +05:30
-formatted_dt = formatted_dt[:-2] + ":" + formatted_dt[-2:]
+# ------------------- API CREDENTIALS -------------------
+CLIENT_ID = st.secrets.get("PROKERALA_CLIENT_ID", "")
+CLIENT_SECRET = st.secrets.get("PROKERALA_CLIENT_SECRET", "")
 
-params = {
-    "ayanamsa": 1,
-    "datetime": formatted_dt,
-    "latitude": lat,
-    "longitude": lon
-}
+if not CLIENT_ID or not CLIENT_SECRET:
+    st.error("⚠️ Add PROKERALA_CLIENT_ID and PROKERALA_CLIENT_SECRET in Streamlit → Settings → Secrets")
+else:
+    # STEP 1: Get Access Token
+    token_url = "https://api.prokerala.com/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
+    }
 
-auth_header = {"Authorization": f"Bearer {access_token}"}
+    try:
+        token_resp = requests.post(token_url, data=data, headers=headers, timeout=10)
+        token_resp.raise_for_status()
+        token_json = token_resp.json()
+        access_token = token_json.get("access_token")
 
-resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
-resp.raise_for_status()
-data = resp.json()
-p = data.get("data", {}).get("panchang", {})
+        if not access_token:
+            st.error(f"🚫 No access token returned. Response: {token_json}")
+        else:
+            # STEP 2: Panchang API call
+            panchang_url = "https://api.prokerala.com/v2/astrology/panchang"
 
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown("## 🔮 **Panchang Details**")
-st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
-st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
-st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
-st.markdown(f"🪶 **Yoga:**  {p.get('yoga',{}).get('name','—')}")
-st.markdown(f"🌼 **Karana:**  {p.get('karana',{}).get('name','—')}")
-st.markdown(f"📿 **Vaar (Day):**  {p.get('day',{}).get('name','—')}")
-st.markdown("<hr>", unsafe_allow_html=True)
+            # ✅ Proper ISO format with colon in timezone offset
+            formatted_dt = now.strftime("%Y-%m-%dT%H:%M:%S%z")
+            formatted_dt = formatted_dt[:-2] + ":" + formatted_dt[-2:]
+
+            params = {
+                "ayanamsa": 1,
+                "datetime": formatted_dt,
+                "latitude": lat,
+                "longitude": lon
+            }
+
+            auth_header = {"Authorization": f"Bearer {access_token}"}
+            resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            p = data.get("data", {}).get("panchang", {})
+
+            # ------------------- DISPLAY -------------------
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("## 🔮 **Panchang Details**")
+            st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
+            st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
+            st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
+            st.markdown(f"🪶 **Yoga:**  {p.get('yoga',{}).get('name','—')}")
+            st.markdown(f"🌼 **Karana:**  {p.get('karana',{}).get('name','—')}")
+            st.markdown(f"📿 **Vaar (Day):**  {p.get('day',{}).get('name','—')}")
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"🚫 API Error: {e}")
+
 # ------------------- FOOTER -------------------
 st.markdown("""
 <div class="footer">
