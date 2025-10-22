@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 from datetime import datetime
 import pytz
+from streamlit_autorefresh import st_autorefresh  # ✅ keep this import at the top
 
 # ------------------- CONFIG -------------------
 st.set_page_config(page_title="🕉️ Kaalchakra Live", page_icon="🕉️", layout="centered")
@@ -21,6 +22,10 @@ hr{border:1px solid #f4d03f;box-shadow:0 0 5px #f4d03f;}
 st.markdown("<h1>🕉️ Kaalchakra Live</h1><h3>Realtime Panchang — Paksha | Tithi | Nakshatra | Yoga | Karana | Vaar</h3>",
             unsafe_allow_html=True)
 
+# ------------------- AUTO REFRESH -------------------
+# Refresh every 60 seconds (60000 ms)
+st_autorefresh(interval=60000, key="kaalachakra_refresh")
+
 # ------------------- INPUTS -------------------
 st.sidebar.header("🌍 Location & Timezone")
 lat = st.sidebar.number_input("Latitude", value=28.6139, format="%.6f")
@@ -30,10 +35,6 @@ tz = st.sidebar.text_input("Timezone", value="Asia/Kolkata")
 # ------------------- TIME ---------------------
 now = datetime.now(pytz.timezone(tz))
 st.markdown(f"### 🕒 {now.strftime('%A, %d %B %Y | %I:%M %p')}")
-
-# auto-refresh every minute
-st_autorefresh = st.experimental_rerun  # compatibility alias
-st_autorefresh_interval = 60000
 
 # ------------------- API CALL -----------------
 API_KEY = st.secrets.get("PROKERALA_API_KEY", "")
