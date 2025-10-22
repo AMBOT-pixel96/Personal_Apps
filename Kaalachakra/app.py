@@ -93,38 +93,55 @@ now = datetime.now(pytz.timezone(tz))
 st.markdown(f"### 🕒 {now.strftime('%A, %d %B %Y | %I:%M %p')}")
 
 # ------------------- API CALL -----------------
-API_KEY = st.secrets.get("PROKERALA_API_KEY", "")
-if not API_KEY:
-    st.error("⚠️ Add PROKERALA_API_KEY in Streamlit → Settings → Secrets")
+CLIENT_ID = st.secrets.get("PROKERALA_CLIENT_ID", "")
+CLIENT_SECRET = st.secrets.get("PROKERALA_CLIENT_SECRET", "")
+
+if not CLIENT_ID or not CLIENT_SECRET:
+    st.error("⚠️ Add PROKERALA_CLIENT_ID and PROKERALA_CLIENT_SECRET in Streamlit → Settings → Secrets")
 else:
-    url = "https://api.prokerala.com/v2/astrology/panchang"
-    params = {
-        "ayanamsa": 1,
-        "datetime": now.isoformat(),
-        "latitude": lat,
-        "longitude": lon
+    # STEP 1: Get access token
+    token_url = "https://api.prokerala.com/token"
+    token_data = {
+        "grant_type": "client_credentials",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
     }
-    headers = {"Authorization": f"Bearer {API_KEY}"}
 
     try:
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        p = data.get("data", {}).get("panchang", {})
+        token_resp = requests.post(token_url, data=token_data, timeout=10)
+        token_resp.raise_for_status()
+        access_token = token_resp.json().get("access_token")
 
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown("## 🔮 **Panchang Details**")
-        st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
-        st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
-        st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
-        st.markdown(f"🪶 **Yoga:**  {p.get('yoga',{}).get('name','—')}")
-        st.markdown(f"🌼 **Karana:**  {p.get('karana',{}).get('name','—')}")
-        st.markdown(f"📿 **Vaar (Day):**  {p.get('day',{}).get('name','—')}")
-        st.markdown("<hr>", unsafe_allow_html=True)
+        if not access_token:
+            st.error("🚫 Failed to get access token. Check your credentials.")
+        else:
+            # STEP 2: Use token to call Panchang API
+            url = "https://api.prokerala.com/v2/astrology/panchang"
+            params = {
+                "ayanamsa": 1,
+                "datetime": now.isoformat(),
+                "latitude": lat,
+                "longitude": lon
+            }
+            headers = {"Authorization": f"Bearer {access_token}"}
 
-    except Exception as e:
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            p = data.get("data", {}).get("panchang", {})
+
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("## 🔮 **Panchang Details**")
+            st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
+            st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
+            st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
+            st.markdown(f"🪶 **Yoga:**  {p.get('yoga',{}).get('name','—')}")
+            st.markdown(f"🌼 **Karana:**  {p.get('karana',{}).get('name','—')}")
+            st.markdown(f"📿 **Vaar (Day):**  {p.get('day',{}).get('name','—')}")
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+    except requests.exceptions.RequestException as e:
         st.error(f"🚫 API Error: {e}")
-
 # ------------------- FOOTER -------------------
 st.markdown("""
 <div class="footer">
