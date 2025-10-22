@@ -301,33 +301,6 @@ if gen and P:
     html_bytes = sankalpa_html(text, P, name or "sankalpa")
     st.download_button("⬇️ Download Sankalpa (HTML → Print to PDF)",
                        data=html_bytes, file_name="sankalpa.html", mime="text/html")
-# UI — Button + Form
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align:center'>🪔 Generate Sankalpa</h3>", unsafe_allow_html=True)
-
-with st.expander("Open Sankalpa Form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        name = st.text_input("Name (e.g., Amlan Mishra)", value="")
-        gotra = st.text_input("Gotra (e.g., भारद्वाज)", value="")
-        place = st.text_input("Place/City (Devanagari or English)", value="नॊएडा / Noida")
-    with col2:
-        purpose = st.text_area("Why are you taking the Sankalpa? (Devanagari or English)", height=80, value="समस्त दुःख–कष्ट–विघ्न–नाशनार्थे")
-        offering = st.text_area("What will you offer / do? (Devanagari or English)", height=80, value="११ पाठाः, नैवेद्यम् च समर्पयामि")
-    when_dt = st.datetime_input("Date & Time for Sankalpa", value=now_local)
-
-    gen = st.button("✨ Generate", use_container_width=True)
-
-if gen and P:
-    text = build_sankalpa(P, name.strip() or "—", gotra.strip() or "—",
-                          place.strip() or "—", purpose.strip() or "—",
-                          offering.strip() or "—", when_dt)
-    st.success("✅ Sankalpa generated below. Review and download.")
-    st.markdown(f"<div class='out'>{text}</div>", unsafe_allow_html=True)
-
-    html_bytes = sankalpa_html(text, P, name or "sankalpa")
-    st.download_button("⬇️ Download Sankalpa (HTML → Print to PDF)", data=html_bytes,
-                       file_name="sankalpa.html", mime="text/html")
 
 # ---------- DEBUG ----------
 if show_debug and P:
