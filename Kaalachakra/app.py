@@ -123,11 +123,10 @@ else:
             formatted_dt = formatted_dt[:-2] + ":" + formatted_dt[-2:]
 
             params = {
-                "ayanamsa": 1,
-                "datetime": formatted_dt,
-                "latitude": lat,
-                "longitude": lon
-            }
+    "ayanamsa": 1,
+    "datetime": formatted_dt,
+    "coordinates": f"{lat},{lon}"
+}
 
             auth_header = {"Authorization": f"Bearer {access_token}"}
             resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
