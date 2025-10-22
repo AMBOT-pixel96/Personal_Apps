@@ -92,59 +92,35 @@ st_autorefresh(interval=60000, key="kaalachakra_refresh")
 now = datetime.now(pytz.timezone(tz))
 st.markdown(f"### 🕒 {now.strftime('%A, %d %B %Y | %I:%M %p')}")
 
-# ------------------- API CALL -----------------
-CLIENT_ID = st.secrets.get("PROKERALA_CLIENT_ID", "")
-CLIENT_SECRET = st.secrets.get("PROKERALA_CLIENT_SECRET", "")
+# STEP 2: Panchang API call
+panchang_url = "https://api.prokerala.com/v2/astrology/panchang"
+formatted_dt = now.strftime("%Y-%m-%dT%H:%M:%S%z")
+# Add colon in timezone offset → +05:30
+formatted_dt = formatted_dt[:-2] + ":" + formatted_dt[-2:]
 
-if not CLIENT_ID or not CLIENT_SECRET:
-    st.error("⚠️ Add PROKERALA_CLIENT_ID and PROKERALA_CLIENT_SECRET in Streamlit → Settings → Secrets")
-else:
-    # STEP 1: Get access token
-    token_url = "https://api.prokerala.com/token"
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    data = {
-        "grant_type": "client_credentials",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET
-    }
+params = {
+    "ayanamsa": 1,
+    "datetime": formatted_dt,
+    "latitude": lat,
+    "longitude": lon
+}
 
-    try:
-        token_resp = requests.post(token_url, data=data, headers=headers, timeout=10)
-        token_resp.raise_for_status()
-        token_json = token_resp.json()
-        access_token = token_json.get("access_token")
+auth_header = {"Authorization": f"Bearer {access_token}"}
 
-        if not access_token:
-            st.error(f"🚫 No access token returned. Response: {token_json}")
-        else:
-            # STEP 2: Panchang API call
-            panchang_url = "https://api.prokerala.com/v2/astrology/panchang"
-            params = {
-                "ayanamsa": 1,
-                "datetime": now.strftime("%Y-%m-%dT%H:%M:%S%z"),  # ✅ fixed format
-                "latitude": lat,
-                "longitude": lon
-            }
-            auth_header = {"Authorization": f"Bearer {access_token}"}
+resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
+resp.raise_for_status()
+data = resp.json()
+p = data.get("data", {}).get("panchang", {})
 
-            resp = requests.get(panchang_url, params=params, headers=auth_header, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            p = data.get("data", {}).get("panchang", {})
-
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("## 🔮 **Panchang Details**")
-            st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
-            st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
-            st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
-            st.markdown(f"🪶 **Yoga:**  {p.get('yoga',{}).get('name','—')}")
-            st.markdown(f"🌼 **Karana:**  {p.get('karana',{}).get('name','—')}")
-            st.markdown(f"📿 **Vaar (Day):**  {p.get('day',{}).get('name','—')}")
-            st.markdown("<hr>", unsafe_allow_html=True)
-
-    except requests.exceptions.RequestException as e:
-        st.error(f"🚫 API Error: {e}")
-
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown("## 🔮 **Panchang Details**")
+st.markdown(f"🌗 **Paksha:**  {p.get('paksha','—')}")
+st.markdown(f"🌸 **Tithi:**  {p.get('tithi',{}).get('name','—')}")
+st.markdown(f"✨ **Nakshatra:**  {p.get('nakshatra',{}).get('name','—')}")
+st.markdown(f"🪶 **Yoga:**  {p.get('yoga',{}).get('name','—')}")
+st.markdown(f"🌼 **Karana:**  {p.get('karana',{}).get('name','—')}")
+st.markdown(f"📿 **Vaar (Day):**  {p.get('day',{}).get('name','—')}")
+st.markdown("<hr>", unsafe_allow_html=True)
 # ------------------- FOOTER -------------------
 st.markdown("""
 <div class="footer">
