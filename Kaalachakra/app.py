@@ -306,37 +306,36 @@ if gen and P:
 if show_debug and P:
     st.markdown("<hr><h3>🧪 Debug</h3>", unsafe_allow_html=True)
     st.caption(f"☀️ Sun λ = {P['sun_long']:.6f}°  |  🌙 Moon λ = {P['moon_long']:.6f}°  |  Δ = {P['elong']:.6f}°  |  trim = {ayan_trim:+.3f}°")
-# ====================== GRAND SANKALPA MODULE (v10.1) ======================
+# ====================== GRAND SANKALPA MODULE (v10.1 — ID-Proof Edition) ======================
 from utils.sankalpa_engine import generate_sankalpa
 
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown("<h3 style='text-align:center;'>📜 Grand Traditional Sankalpa</h3>", unsafe_allow_html=True)
 
-with st.expander("Open Grand Sankalpa Form (Full Sanskrit Style)"):
+with st.expander("Open Grand Sankalpa Form (Full Sanskrit Style)", expanded=False):
     c1, c2 = st.columns(2)
     with c1:
-        name_full = st.text_input("Full Name (IAST or English)", "Amlan Mishra")
-        gotra_full = st.text_input("Gotra (IAST or Sanskrit)", "Bhāradvāja")
-        gender = st.selectbox("Gender", ["Male", "Female"])
+        name_full = st.text_input("Full Name (IAST or English)", "Amlan Mishra", key="grand_name")
+        gotra_full = st.text_input("Gotra (IAST or Sanskrit)", "Bhāradvāja", key="grand_gotra")
+        gender = st.selectbox("Gender", ["Male", "Female"], key="grand_gender")
     with c2:
-        country = st.text_input("Country", "Bhāratavarṣe")
-        state = st.text_input("State/Region", "Odisha")
-        city = st.text_input("City/Place", "Bhubaneswar")
+        country = st.text_input("Country", "Bhāratavarṣe", key="grand_country")
+        state = st.text_input("State/Region", "Odisha", key="grand_state")
+        city = st.text_input("City/Place", "Bhubaneswar", key="grand_city")
 
     purpose2 = st.text_area("Purpose — Why are you taking the Sankalpa?",
-                            "to remove all obstacles and ensure divine protection")
+                            "to remove all obstacles and ensure divine protection", key="grand_purpose")
     offering2 = st.text_area("Offering — What will you do or offer?",
-                             "21 recitations of Kālabhairavāṣṭakam and 11 Siddha Kunjikā Stotram")
+                             "21 recitations of Kālabhairavāṣṭakam and 11 Siddha Kunjikā Stotram", key="grand_offering")
 
-    date_sel2 = st.date_input("Sankalpa Date (Traditional)", value=now_local.date())
-    time_sel2 = st.time_input("Sankalpa Time", value=now_local.time().replace(microsecond=0))
+    date_sel2 = st.date_input("Sankalpa Date (Traditional)", value=now_local.date(), key="grand_date")
+    time_sel2 = st.time_input("Sankalpa Time (Traditional)", value=now_local.time().replace(microsecond=0), key="grand_time")
     when_dt2 = tz.localize(datetime.combine(date_sel2, time_sel2))
 
-    gen2 = st.button("🔥 Generate Grand Sankalpa", use_container_width=True)
+    gen2 = st.button("🔥 Generate Grand Sankalpa", use_container_width=True, key="grand_generate_btn")
 
 if gen2 and P:
     try:
-        # Fetch graha data
         jd_eval = swe.julday(when_dt2.year, when_dt2.month, when_dt2.day,
                              when_dt2.hour + when_dt2.minute / 60.0)
         flags = swe.FLG_SWIEPH | swe.FLG_SIDEREAL
@@ -345,23 +344,38 @@ if gen2 and P:
         jup, _ = swe.calc_ut(jd_eval, swe.JUPITER, flags)
 
         text2 = generate_sankalpa(
-            country=country, state=state, city=city,
-            paksha_iast=P["paksha"], tithi_iast=P["tithi"],
-            weekday_dt=when_dt2, nakshatra_iast=P["nakshatra"],
-            yoga_iast=P["yoga"], karana_iast=P["karana"],
-            lunar_month_iast="Kartika",  # TODO: compute dynamically
-            sun_lon_sidereal=sun[0], moon_lon_sidereal=moon[0], jupiter_lon_sidereal=jup[0],
-            name_iast=name_full, gotra_iast=gotra_full,
-            purpose_free=purpose2, offering_free=offering2,
-            gender=gender, when_dt=when_dt2
+            country=country,
+            state=state,
+            city=city,
+            paksha_iast=P["paksha"],
+            tithi_iast=P["tithi"],
+            weekday_dt=when_dt2,
+            nakshatra_iast=P["nakshatra"],
+            yoga_iast=P["yoga"],
+            karana_iast=P["karana"],
+            lunar_month_iast="Kartika",  # TODO: dynamic later
+            sun_lon_sidereal=sun[0],
+            moon_lon_sidereal=moon[0],
+            jupiter_lon_sidereal=jup[0],
+            name_iast=name_full,
+            gotra_iast=gotra_full,
+            purpose_free=purpose2,
+            offering_free=offering2,
+            gender=gender,
+            when_dt=when_dt2
         )
 
         st.success("✅ Grand Sankalpa generated below.")
         st.markdown(f"<div class='out'>{text2}</div>", unsafe_allow_html=True)
 
         html_bytes2 = text2.encode("utf-8")
-        st.download_button("⬇️ Download Grand Sankalpa (UTF-8 Text)",
-                           data=html_bytes2, file_name="grand_sankalpa.txt", mime="text/plain")
+        st.download_button(
+            "⬇️ Download Grand Sankalpa (UTF-8 Text)",
+            data=html_bytes2,
+            file_name="grand_sankalpa.txt",
+            mime="text/plain",
+            key="grand_download_btn"
+        )
 
     except Exception as e:
         st.error(f"🚫 Error generating Grand Sankalpa: {e}")
